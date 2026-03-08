@@ -217,7 +217,7 @@ export function formatCompactCurrency(amount: number | null) {
   if (amount >= 1_000_000) {
     const compactValue =
       amount >= 10_000_000 ? (amount / 1_000_000).toFixed(1) : (amount / 1_000_000).toFixed(2);
-    return `$${compactValue.replace(/\.0$/, "")}M`;
+    return `$${compactValue.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1")}M`;
   }
 
   if (amount >= 1_000) {
@@ -377,7 +377,7 @@ export function getPendingContactAgents(
   limit = 2
 ) {
   return getDerivedContacts(state, listings, agents)
-    .filter((entry) => entry.status !== "contacted")
+    .filter((entry) => entry.status === "pending")
     .slice(0, limit);
 }
 

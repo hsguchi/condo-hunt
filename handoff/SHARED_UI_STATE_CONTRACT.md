@@ -5,6 +5,7 @@
 Agent 4 owns the shared mock UI state foundation.
 
 The provider is already mounted in `components/app-shell.tsx`, so Agents 1 to 3 should not add another provider. Client components can import the hook and selectors directly.
+Dashboard metrics, the bottom-nav contacts dot, and the last-visited-route behavior are already wired against this shared state.
 
 ## Import Paths
 
@@ -82,14 +83,30 @@ setLastVisitedRoute(route)
 setUiFlag(flag, value)
 ```
 
+## Persistence Helpers
+
+Available from `@/lib/mock-ui-state`:
+
+- `createMockUiState(seed?)`
+- `mergeMockUiState(currentState, patch)`
+- `readPersistedMockUiState()`
+- `writePersistedMockUiState(state)`
+- `clearPersistedMockUiState()`
+- `resetPersistedMockUiState()`
+- `seedPersistedMockUiState(seed?)`
+- `notifyMockUiStateChanged()`
+
 ## Recommended Selectors
 
 Agents should derive UI from selectors instead of re-implementing state math.
 
+- Shared helpers: `getListingById`, `getTrackedListings`, `formatCompactCurrency`, `formatCompactNumber`
 - Listings/detail: `getVisibleListings`, `getTrackedListingById`, `isListingShortlisted`, `isListingDismissed`, `getAgentIdForListing`
 - Shortlist: `getShortlistedListings`, `getFilteredShortlistedListings`
 - Contacts: `getDerivedContacts`, `getContactStatusCounts`, `getPendingContactAgents`
 - Dashboard: `getDashboardSummary`, `getTopValueDeals`, `getDashboardScatterPoints`
+
+`getPendingContactAgents` returns only agents still in the `pending` status. `scheduled` contacts are treated as already in motion, not pending.
 
 ## Usage Example
 
@@ -132,3 +149,10 @@ These utilities seed `localStorage` and dispatch the shared state change event s
 - Agent 2 should use `setListingShortlisted`, `dismissListing`, and listing selectors instead of introducing per-page state.
 - Agent 3 should use `setShortlistFilter`, `setContactStatus`, and contact selectors so counts stay in sync with the dashboard.
 - `dismissedIds` and `shortlistedIds` are mutually exclusive. Dismissed listings are filtered out of derived selectors.
+
+## Styling Constraints
+
+- Do not wrap protected pages in another shell. `components/app-shell.tsx` already provides the provider, `phone-shell`, `phone-content`, and fixed bottom-nav frame.
+- Keep page-level content inside the existing `.screen` flow so the shell's `padding-bottom` continues to reserve space for the fixed nav.
+- Any page-owned sticky or fixed CTA should stay above the nav by using an offset of about `88px` from the bottom, matching the existing `.contact-all` pattern.
+- Prefer existing shared classes like `.hero-card`, `.stats-tile`, `.summary-chip`, `.primary-cta`, `.pill-button`, and `.list-action` instead of introducing competing shell-level variants in shared files.

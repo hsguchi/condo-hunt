@@ -139,7 +139,7 @@ export function DashboardClient() {
           {nextAgent
             ? `${nextAgent.agentName} still needs attention for ${nextAgent.listingCount} shortlisted ${nextAgent.listingCount === 1 ? "home" : "homes"}.`
             : summary.shortlistedCount > 0
-              ? "All shortlisted agents are already contacted. Use Contact Hub to schedule the next viewing."
+              ? "All shortlisted agents are already in motion. Use Contact Hub to schedule the next viewing."
               : "Start by shortlisting a few properties so the outreach queue can populate here."}
         </p>
       </section>
