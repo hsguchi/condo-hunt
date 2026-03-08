@@ -215,8 +215,10 @@ export function formatCompactCurrency(amount: number | null) {
   }
 
   if (amount >= 1_000_000) {
-    const compactValue =
-      amount >= 10_000_000 ? (amount / 1_000_000).toFixed(1) : (amount / 1_000_000).toFixed(2);
+    const precision = amount >= 10_000_000 ? 1 : 2;
+    const compactAmount = amount / 1_000_000;
+    const roundedAmount = Math.round((compactAmount + Number.EPSILON) * 10 ** precision) / 10 ** precision;
+    const compactValue = roundedAmount.toFixed(precision);
     return `$${compactValue.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1")}M`;
   }
 
@@ -436,3 +438,6 @@ export function getDashboardScatterPoints(
     };
   });
 }
+
+
+

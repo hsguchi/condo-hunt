@@ -30,16 +30,17 @@ export function AppShell({ children }: AppShellProps) {
 function AppShellFrame({ children }: AppShellProps) {
   const pathname = usePathname();
   const isLogin = pathname === "/";
+  const isPropertyDetail = pathname.startsWith("/property/");
   const { actions, state } = useMockUiState();
   const dashboardSummary = getDashboardSummary(state);
 
   useEffect(() => {
-    if (isLogin) {
+    if (isLogin || isPropertyDetail) {
       return;
     }
 
     actions.setLastVisitedRoute(pathname);
-  }, [actions, isLogin, pathname]);
+  }, [actions, isLogin, isPropertyDetail, pathname]);
 
   return (
     <div className="app-root">

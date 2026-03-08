@@ -5,11 +5,12 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 const authFile = path.resolve("./tests/e2e/.auth/session.json");
 const webServerCommand =
   process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ??
-  "npm run dev -- --hostname 127.0.0.1 --port 3000";
+  "npm run dev -- --webpack --hostname 127.0.0.1 --port 3000";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  fullyParallel: false,
+  workers: 1,
   globalSetup: path.resolve("./tests/e2e/global.setup.ts"),
   reporter: "list",
   timeout: 30_000,
@@ -54,7 +55,7 @@ export default defineConfig({
       name: "mobile-chrome",
       testIgnore: /auth\.spec\.ts$/,
       use: {
-        ...devices["iPhone 13"],
+        ...devices["Pixel 7"],
         storageState: authFile
       }
     }

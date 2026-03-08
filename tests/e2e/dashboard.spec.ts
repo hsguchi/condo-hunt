@@ -22,10 +22,18 @@ test("derives dashboard metrics from the shared mock UI state", async ({ page })
 });
 
 test("routes dashboard CTAs to shortlist and contacts", async ({ page }) => {
-  await page.getByRole("link", { name: "View All" }).click();
+  const shortlistCta = page.getByRole("link", { name: "View All" });
+  await shortlistCta.evaluate((element) => {
+    element.scrollIntoView({ block: "center", inline: "nearest" });
+  });
+  await shortlistCta.click();
   await expect(page).toHaveURL(/\/shortlist$/);
 
   await page.goto("/dashboard");
-  await page.getByRole("link", { name: "Open Hub" }).click();
+  const contactHubCta = page.getByRole("link", { name: "Open Hub" });
+  await contactHubCta.evaluate((element) => {
+    element.scrollIntoView({ block: "center", inline: "nearest" });
+  });
+  await contactHubCta.click();
   await expect(page).toHaveURL(/\/contacts$/);
 });

@@ -325,8 +325,19 @@ img {
 }
 
 .small-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
   color: var(--blue);
   font-weight: 600;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  scroll-margin-bottom: calc(120px + env(safe-area-inset-bottom));
 }
 
 .input-shell {
@@ -1290,3 +1301,7 @@ img {
   font-size: 0.74rem;
   font-weight: 700;
 }
+
+
+
+

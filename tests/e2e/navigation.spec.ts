@@ -22,7 +22,7 @@ test("keeps the bottom nav fixed while navigating protected screens", async ({ p
   await expect(page).toHaveURL(/\/shortlist$/);
   await expect(page.getByRole("heading", { name: /Shortlist/i })).toBeVisible();
 
-  await page.getByRole("link", { name: /Agents/i }).click();
+  await nav.getByRole("link", { name: "Agents", exact: true }).click();
   await expect(page).toHaveURL(/\/contacts$/);
   await expect(page.getByRole("heading", { name: /Contact Hub/i })).toBeVisible();
 
@@ -30,3 +30,4 @@ test("keeps the bottom nav fixed while navigating protected screens", async ({ p
   expect(contactsNavBox).not.toBeNull();
   expect(contactsNavBox!.y + contactsNavBox!.height).toBeGreaterThan((viewport?.height ?? 0) - 8);
 });
+

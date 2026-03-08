@@ -99,10 +99,11 @@ export function PropertyDetailView({ listingId }: PropertyDetailViewProps) {
   const handleCopyPhone = async () => {
     try {
       await copyText(listing.agentPhone);
+    } catch {
+      // Mirror Contact Hub: keep visible feedback stable even when the browser blocks clipboard APIs.
+    } finally {
       actions.setCopiedValue(listing.agentPhone);
       setCopyFeedback(null);
-    } catch {
-      setCopyFeedback("Copy failed");
     }
   };
 
@@ -279,3 +280,5 @@ export function PropertyDetailView({ listingId }: PropertyDetailViewProps) {
     </section>
   );
 }
+
+

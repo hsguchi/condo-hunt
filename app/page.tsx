@@ -4,9 +4,7 @@ import { Icon } from "@/components/icon";
 import { getRouteIntentFromRequest, getRouteIntentLabel } from "@/lib/auth/route-intent";
 
 interface LoginPageProps {
-  searchParams?:
-    | Promise<Record<string, string | string[] | undefined>>
-    | Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 function getRequestOrigin(headerStore: Headers) {

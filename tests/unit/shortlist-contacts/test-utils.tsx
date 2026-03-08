@@ -6,6 +6,7 @@ import {
   MOCK_UI_STATE_STORAGE_KEY,
   type MockUiStateSeed
 } from "@/lib/mock-ui-state";
+import { vi } from "vitest";
 
 interface RenderWithMockUiStateOptions {
   route?: string;

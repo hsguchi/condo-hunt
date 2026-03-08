@@ -97,6 +97,7 @@ describe("mock selectors", () => {
     expect(formatCompactCurrency(1_000_000)).toBe("$1M");
     expect(formatCompactCurrency(1_500_000)).toBe("$1.5M");
     expect(formatCompactCurrency(2_480_000)).toBe("$2.48M");
+    expect(formatCompactCurrency(2_835_000)).toBe("$2.84M");
     expect(formatCompactCurrency(null)).toBe("--");
   });
 
@@ -122,3 +123,5 @@ describe("mock selectors", () => {
     ]);
   });
 });
+
+

@@ -72,4 +72,29 @@ describe("AppShell", () => {
       })
     );
   });
+
+  it("preserves the previous non-detail route while rendering property detail pages", async () => {
+    window.localStorage.setItem(
+      MOCK_UI_STATE_STORAGE_KEY,
+      JSON.stringify(
+        createMockUiState({
+          lastVisitedRoute: "/contacts"
+        })
+      )
+    );
+
+    mockUsePathname.mockReturnValue("/property/2");
+
+    render(
+      <AppShell>
+        <div>Property detail body</div>
+      </AppShell>
+    );
+
+    await waitFor(() =>
+      expect(readStoredState()).toMatchObject({
+        lastVisitedRoute: "/contacts"
+      })
+    );
+  });
 });
