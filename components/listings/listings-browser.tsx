@@ -293,42 +293,61 @@ export function ListingsBrowser() {
                   <span className="tag-chip tag-chip--active">{selectedListing.tenure}</span>
                 </div>
 
-                <div className="listing-divider" />
-
-                <div className="agent-row agent-row--tight">
-                  <div className="agent-ident">
-                    <div className="agent-portrait" />
-                    <div>
-                      <strong>{selectedListing.agentName}</strong>
-                      <p className="detail-copy">{selectedListing.sourceSite} • Fast contact</p>
-                    </div>
-                  </div>
-                  <div className="inline-actions" style={{ justifyContent: "flex-end" }}>
-                    <a
-                      aria-label={`Call ${selectedListing.agentName}`}
-                      className="list-action"
-                      href={`tel:${selectedListing.agentPhone}`}
-                    >
-                      <Icon name="phone" />
-                    </a>
-                    <a
-                      aria-label={`WhatsApp ${selectedListing.agentName}`}
-                      className="list-action"
-                      href={toWhatsappHref(selectedListing.agentPhone)}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      <Icon name="message" />
-                    </a>
-                  </div>
-                </div>
-
-                <p className="muted" style={{ lineHeight: 1.6, marginTop: -2 }}>
-                  {selectedListing.notes}
+                <p className="detail-copy" style={{ marginTop: 2 }}>
+                  {selectedListing.agentName} • {selectedListing.sourceSite} lead
                 </p>
               </div>
             </article>
           </section>
+
+          <div className="floating-actions floating-actions--overlay">
+            <button
+              aria-label={`Reject ${selectedListing.projectName}`}
+              className="fab fab--reject"
+              onClick={handleRejectListing}
+              type="button"
+            >
+              x
+            </button>
+            <Link
+              className="primary-cta primary-cta--caps"
+              href={`/property/${selectedListing.id}`}
+              onClick={() => {
+                actions.setLastVisitedRoute("/listings");
+                actions.setUiFlag("filterSheetOpen", false);
+              }}
+            >
+              View details
+            </Link>
+            <button
+              aria-label={
+                selectedIsShortlisted
+                  ? `Remove ${selectedListing.projectName} from shortlist`
+                  : `Save ${selectedListing.projectName} to shortlist`
+              }
+              aria-pressed={selectedIsShortlisted}
+              className="fab fab--heart"
+              onClick={handleToggleShortlist}
+              style={
+                selectedIsShortlisted
+                  ? {
+                      background:
+                        "linear-gradient(135deg, rgb(37, 99, 235) 0%, rgb(29, 78, 216) 100%)",
+                      color: "white"
+                    }
+                  : undefined
+              }
+              type="button"
+            >
+              <Icon name="heart" />
+            </button>
+          </div>
+
+          <p aria-live="polite" className="muted" role="status" style={{ margin: 0 }}>
+            {selectedIsShortlisted
+              ? `${selectedListing.projectName} is saved to your shortlist.`
+              : "Save this property to keep it visible in Shortlist."}
+          </p>
 
           <section className="detail-section">
             <div className="card-head">
@@ -378,55 +397,6 @@ export function ListingsBrowser() {
               })}
             </div>
           </section>
-
-          <p aria-live="polite" className="muted" role="status" style={{ margin: 0 }}>
-            {selectedIsShortlisted
-              ? `${selectedListing.projectName} is saved to your shortlist.`
-              : "Save this property to keep it visible in Shortlist."}
-          </p>
-
-          <div className="floating-actions floating-actions--overlay">
-            <button
-              aria-label={`Reject ${selectedListing.projectName}`}
-              className="fab fab--reject"
-              onClick={handleRejectListing}
-              type="button"
-            >
-              x
-            </button>
-            <Link
-              className="primary-cta primary-cta--caps"
-              href={`/property/${selectedListing.id}`}
-              onClick={() => {
-                actions.setLastVisitedRoute("/listings");
-                actions.setUiFlag("filterSheetOpen", false);
-              }}
-            >
-              View details
-            </Link>
-            <button
-              aria-label={
-                selectedIsShortlisted
-                  ? `Remove ${selectedListing.projectName} from shortlist`
-                  : `Save ${selectedListing.projectName} to shortlist`
-              }
-              aria-pressed={selectedIsShortlisted}
-              className="fab fab--heart"
-              onClick={handleToggleShortlist}
-              style={
-                selectedIsShortlisted
-                  ? {
-                      background:
-                        "linear-gradient(135deg, rgb(37, 99, 235) 0%, rgb(29, 78, 216) 100%)",
-                      color: "white"
-                    }
-                  : undefined
-              }
-              type="button"
-            >
-              <Icon name="heart" />
-            </button>
-          </div>
         </>
       ) : (
         <section className="empty-card">

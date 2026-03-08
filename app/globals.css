@@ -623,8 +623,7 @@ img {
 
 .listing-stack {
   position: relative;
-  min-height: 700px;
-  padding-top: 12px;
+  padding: 12px 0 28px;
 }
 
 .listing-shadow-card,
@@ -636,12 +635,10 @@ img {
 }
 
 .listing-shadow-card {
-  top: 24px;
-  left: 12px;
-  right: 12px;
-  height: 760px;
+  inset: 24px 12px 0;
   background: rgba(237, 242, 247, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.8);
+  pointer-events: none;
 }
 
 .listing-shadow-card::before,
@@ -660,7 +657,7 @@ img {
   position: relative;
   z-index: 2;
   margin: 0 auto;
-  width: 358px;
+  width: min(358px, 100%);
   border-radius: 34px;
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.82);
@@ -1162,13 +1159,13 @@ img {
 }
 
 .listing-card--tight {
-  width: 358px;
+  width: min(358px, 100%);
   border-radius: 34px;
   overflow: hidden;
 }
 
 .listing-hero--minimal {
-  height: 384px;
+  height: 228px;
   background: linear-gradient(180deg, #b8bcc2 0%, #d7dbe0 100%);
 }
 
@@ -1186,7 +1183,8 @@ img {
 }
 
 .listing-copy--tight {
-  gap: 16px;
+  gap: 10px;
+  padding: 18px 20px 14px;
 }
 
 .listing-header-row {
@@ -1231,9 +1229,11 @@ img {
 }
 
 .floating-actions--overlay {
-  margin-top: -58px;
-  position: relative;
-  z-index: 3;
+  margin: -28px auto 16px;
+  max-width: 326px;
+  position: sticky;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  z-index: 5;
 }
 
 .fab--reject {
@@ -1301,7 +1301,3 @@ img {
   font-size: 0.74rem;
   font-weight: 700;
 }
-
-
-
-
