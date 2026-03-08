@@ -29,12 +29,14 @@ html {
 
 body {
   margin: 0;
+  min-height: 100vh;
   font-family: var(--font-sans);
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.16), transparent 24%),
     radial-gradient(circle at bottom right, rgba(143, 216, 200, 0.3), transparent 28%),
     linear-gradient(180deg, #eff2f8 0%, #f7f7f7 100%);
+  overflow-x: hidden;
 }
 
 a {
@@ -63,6 +65,7 @@ img {
 .phone-shell-shell {
   position: relative;
   width: min(390px, 100vw);
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
 }
 
 .phone-shell {
@@ -84,7 +87,7 @@ img {
 
 .phone-content {
   min-height: 100%;
-  padding: 24px 16px 112px;
+  padding: 24px 16px calc(112px + env(safe-area-inset-bottom));
 }
 
 .phone-content--login {
@@ -1085,7 +1088,7 @@ img {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  padding: 16px 24px 24px;
+  padding: 16px 24px calc(24px + env(safe-area-inset-bottom));
   border-top: 1px solid rgba(255, 255, 255, 0.76);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(18px);
@@ -1094,14 +1097,18 @@ img {
 
 .bottom-nav__item {
   display: grid;
+  align-content: start;
   justify-items: center;
   gap: 6px;
+  min-height: 52px;
   color: var(--muted);
   font-size: 0.74rem;
 }
 
-.bottom-nav__item[data-active="true"] {
+.bottom-nav__item[data-active="true"],
+.bottom-nav__item[aria-current="page"] {
   color: var(--blue);
+  font-weight: 700;
 }
 
 .bottom-nav__icon-wrap {
