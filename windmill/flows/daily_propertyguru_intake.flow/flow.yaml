@@ -1,0 +1,20 @@
+summary: daily_propertyguru_intake_flow
+value:
+  modules: []
+schema:
+  $schema: "https://json-schema.org/draft/2020-12/schema"
+  type: object
+  properties:
+    max_detail_scrapes:
+      type: integer
+      default: 10
+    matched_refresh_days:
+      type: integer
+      default: 3
+    shortlisted_refresh_days:
+      type: integer
+      default: 1
+    low_priority_refresh_days:
+      type: integer
+      default: 7
+  additionalProperties: false

@@ -1,400 +1,899 @@
+# Property Hunter Backend Playbook
 
-# Property Hunter App — Execution Playbook (Netlify + Airtable + Firecrawl)
+Owner: Adrian Lo
+Project: Condo Hunt
+Execution agent: Codex Desktop
+Deployment target: Netlify
+Primary browser executor: Local Playwright worker
+Deferred batch orchestrator: Windmill
 
-Owner: Adrian Lo  
-Goal: Rapid MVP for tracking Singapore condo listings and contacting agents quickly via WhatsApp.
+## Goal
 
-Primary UX requirement:
-- Contact Hub page showing all agent contacts on one screen
-- Quick actions: WhatsApp, Call, Copy Number
+Build the backend as two separate but compatible layers for MVP:
 
-Deployment target:
-- Netlify
+- an online retrieval layer for the app
+- a local browser-use execution layer for authenticated PropertyGuru workflows
 
-Execution agent:
-- Codex Desktop
+The frontend is already built around mock data, shared selectors, and screen-specific behaviors. Backend work should now mirror that contract closely enough that we can switch from mock mode to live mode with minimal UI rewrite.
 
----
+## Current MVP Direction
 
-# Architecture
+The current MVP is no longer "autonomous ETL first."
 
-Mobile UI (generated from Stitch screens)
-        ↓
-Netlify frontend app
-        ↓
-Netlify Functions (API layer)
-        ↓
-Firecrawl (scrape listing data)
-        ↓
-Airtable (temporary database)
+It is now:
 
----
+- Airtable as the control plane for schedules, prompts, and criteria profiles
+- a local Playwright worker as the executor
+- your logged-in Chrome browser session as the authenticated runtime
+- Netlify as the app-facing retrieval and mutation layer
 
-# Phase 1 — Repo Initialization
+This means the MVP browser worker should:
 
-Create repository:
+- read due jobs from Airtable
+- attach to your local authenticated Chrome session
+- navigate PropertyGuru on demand
+- extract a bounded number of matching listings
+- write normalized results and run status back to Airtable
 
-property-hunter-app
+Windmill and Firecrawl are still useful later for public-page discovery or post-processing, but they are not the critical path for the current MVP.
 
-Structure:
+## Guiding Principle
 
-property-hunter-app
-├── app
-│   ├── pages
-│   │   ├── dashboard
-│   │   ├── listings
-│   │   ├── property
-│   │   ├── contacts
-│   │   └── shortlist
-│   ├── components
-│   ├── hooks
-│   └── styles
-│
-├── netlify
-│   └── functions
-│       ├── importListing.ts
-│       └── getListings.ts
-│
-├── lib
-│   ├── airtable.ts
-│   ├── firecrawl.ts
-│   └── normalizer.ts
-│
-├── types
-│   └── models.ts
-│
-├── public
-├── package.json
-└── netlify.toml
+Do not design the backend around Airtable rows first.
 
-Framework recommendation: Next.js
+Design it around the current frontend contract:
 
----
+- `types/models.ts`
+- `lib/sample-data.ts`
+- `lib/mock-selectors.ts`
+- `lib/mock-ui-state.ts`
 
-# Phase 2 — Environment Variables
+The UI already assumes a specific listing shape, agent shape, and a small set of user decision states. The backend should return those same primitives instead of inventing a parallel API vocabulary.
 
-Create `.env.local`
+## System Architecture
 
-AIRTABLE_API_KEY=
-AIRTABLE_BASE_ID=
-FIRECRAWL_API_KEY=
+### Online retrieval layer
 
-Set the same variables in Netlify dashboard.
+Runtime:
 
----
+- Next.js app on Netlify
+- Netlify Functions as the app-facing API
 
-# Phase 3 — Airtable Schema
+Responsibilities:
 
-Create Airtable base: PropertyHunter
+- serve normalized listing and agent data to the UI
+- serve durable user decision state
+- accept app mutations like shortlist, dismiss, and contact status changes
+- never depend on live Firecrawl calls during normal page loads
 
-## Listings Table
+### Browser-use execution layer
 
-Fields:
+Runtime:
 
-listing_id
-project_name
-address
-district
-price
-size_sqft
-psf
-bedrooms
-bathrooms
-tenure
-top_year
-mrt_station
-mrt_walk_mins
-ips_drive_mins
-source_url
-source_site
-agent_name
-agent_phone
-status
-notes
+- local Playwright worker attached to a logged-in Chrome session
 
-Status values:
+Responsibilities:
 
-new
-shortlisted
-viewing_booked
-viewed
-negotiating
-dropped
+- poll Airtable for due browser jobs
+- interpret bounded extraction tasks such as "extract 10 matches"
+- attach to the local authenticated browser session
+- navigate PropertyGuru search or listing pages
+- extract normalized listing cards and detail fields
+- persist extracted records, run logs, and failures back to Airtable
+- stop after explicit limits like `10` or `50` matches
 
-## Agents Table
+### Deferred offline ETL layer
 
-agent_id
-agent_name
-phone
-agency
-notes
-contacted
+Runtime:
 
-Formula field:
+- Windmill flows and scripts
 
-whatsapp_link
+Responsibilities:
 
-"https://wa.me/" & SUBSTITUTE({phone},"+","")
+- optional later-stage public-page discovery
+- optional later-stage refresh or post-processing
+- enrichment that does not require the local authenticated browser
 
----
+### Shared contract
 
-# Phase 4 — Type Models
+Both layers must use the same domain model and normalization rules.
 
-File: types/models.ts
+The app should read curated Airtable-backed data. It should not talk to Firecrawl directly.
 
-Example:
+## Why Browser-Use Fits This MVP
 
+Browser-use is the better MVP shape because:
+
+- the critical field, agent phone number, is login-gated
+- the authenticated session exists in your real browser, not in Netlify
+- prompt-driven tasks such as "extract 10 matches" map naturally to job execution
+- Airtable can act as a human-editable control plane for schedules and prompts
+- a local worker avoids the mismatch between remote scraping services and the logged-in browser state
+
+## Why Windmill Still Matters Later
+
+Windmill is a good fit for this ETL layer because it gives us:
+
+- scheduled scripts and flows
+- retries and error handlers at the workflow level
+- secure variables and secrets
+- resource-based external system configuration
+
+That still matches later public-page ETL better than trying to run the scrape pipeline inside Netlify request handlers, but it is no longer the first implementation target.
+
+## Browser-Use Job Model
+
+The MVP should not accept unconstrained free-form prompts as the only interface.
+
+Instead, Airtable jobs should be structured and optionally include a prompt for operator context.
+
+Supported job types for MVP:
+
+- `extract_matches`
+- `refresh_listing`
+- `navigate_and_capture`
+
+The first implementation target should be `extract_matches`.
+
+Minimum job inputs:
+
+- `entry_url`
+- `limit`
+- `criteria_profile`
+- `max_pages`
+- `schedule_kind`
+- `next_run_at`
+
+The worker should interpret `extract_matches` deterministically:
+
+- open the configured PropertyGuru search URL
+- ensure the session is authenticated and usable
+- inspect listing cards in order
+- evaluate cards against the criteria profile
+- collect up to the requested limit
+- write results and run metadata to Airtable
+
+Do not rely on a generic autonomous browser agent for MVP. Use a bounded action set and a small number of supported job contracts.
+
+## Search Criteria For Low-Credit ETL
+
+The initial MVP ETL should use strict, criteria-first filtering.
+
+### Source restrictions
+
+- source site: `propertyguru.com.sg` only
+- listing type: `For Sale`
+- property type: `Condominium` or `Apartment`
+- no broad full-domain crawl
+- prefer pre-filtered search entry URLs over open-ended discovery
+
+### Price and size
+
+- price: `<= S$1,500,000`
+- bedrooms: `>= 2`
+- floor area: `>= 900 sqft`
+
+### Location
+
+Primary districts:
+
+- District 5
+- District 10
+- District 21
+
+Representative focus areas:
+
+- Buona Vista
+- Clementi
+- Pasir Panjang
+- Bukit Timah
+- Holland
+- Upper Bukit Timah
+- Beauty World
+
+### Transport and commute
+
+- MRT proximity: within `500 m` or `<= 5 min walk`
+- preferred stations include `Buona Vista`, `Dover`, and `Clementi`
+- commute target: `< 15 minutes drive` to NUS Institute of Policy Studies
+
+### Additional preference filters
+
+- tenure: `Freehold` or `99-year`
+- completion status: `Completed`
+- floor level: `Mid` or `High`
+- furnishing: `Partially Furnished` or `Unfurnished`
+- listed date: `Recent`
+
+### Sort order for search entry pages
+
+- `Price (Low to High)`
+- `Newest Listings`
+- `Price per sqft`
+
+### ETL operating interpretation
+
+These criteria should be used in two passes:
+
+- search-page narrowing: use them to build or maintain very narrow PropertyGuru search entry URLs
+- detail-page acceptance: only keep or refresh listings that still match the hard filters or are already shortlisted by the user
+
+For MVP credit control, treat these as hard filters unless explicitly overridden:
+
+- source site must be `propertyguru.com.sg`
+- price must be `<= S$1,500,000`
+- bedrooms must be `>= 2`
+- size must be `>= 900 sqft`
+- district should be one of `D5`, `D10`, or `D21`
+- MRT proximity should be `<= 500 m` or `<= 5 min walk` when available
+- IPS drive time should be `< 15 minutes` when available
+
+The remaining fields should be treated as preference boosts, not automatic rejection, unless the search-entry URL can filter them cheaply upstream.
+
+## Frontend Surfaces The Backend Must Support
+
+### Listings
+
+Route: `/listings`
+
+Needs:
+
+- active listings queue
+- filterable by budget, tenure, bedrooms, district
+- shortlist toggle
+- dismiss or restore listing
+- property detail navigation
+
+### Property Detail
+
+Route: `/property/[id]`
+
+Needs:
+
+- one listing by id
+- agent name and phone
+- MRT, commute, TOP, tenure, notes
+- shortlist state
+- dismiss state
+
+### Shortlist
+
+Route: `/shortlist`
+
+Needs:
+
+- shortlisted listings only
+- shortlist filters
+- remove from shortlist
+- deep link into property detail
+
+### Contact Hub
+
+Route: `/contacts`
+
+Needs:
+
+- contacts derived from shortlisted listings
+- one agent can represent multiple listings
+- per-agent contact status: `pending`, `contacted`, `scheduled`
+- phone, agency, listing count, listing names
+
+### Dashboard
+
+Route: `/dashboard`
+
+Needs:
+
+- tracked count
+- shortlisted count
+- viewed count
+- average shortlist price
+- average shortlist psf
+- pending contact count
+- top value deals
+- listing scatter points
+
+Important:
+
+The dashboard is already derived from listings plus user decision state. We do not need a separate analytics service for MVP. We need stable primary data that lets the existing selectors compute the same answers in live mode.
+
+## Ownership Boundary
+
+### Backend owns persistent business data
+
+- listings
+- agents
+- listing source metadata
+- normalized import results
+- scrape run records
+- raw scrape snapshots
+- scrape errors
+- listing change events
+- user-specific shortlist state
+- user-specific dismissed state
+- user-specific agent contact status
+
+### Frontend keeps transient UI state
+
+- active filters
+- filter sheet open or closed
+- currently selected listing card
+- copied phone feedback
+- local route memory
+- other presentational flags
+
+This matters because the current `MockUiState` mixes durable user decisions with temporary UI-only values. Live backend work should persist only the durable decision state.
+
+## Canonical Data Contract
+
+The backend should return data that maps directly into the existing frontend types.
+
+### Listing
+
+```ts
 export interface Listing {
-  id: string
-  projectName: string
-  address: string
-  district: string
-  price: number
-  sizeSqft: number
-  psf: number
-  bedrooms: number
-  agentName: string
-  agentPhone: string
-  sourceUrl: string
-  status: string
+  id: string;
+  listingId: string;
+  projectName: string;
+  address: string;
+  district: string;
+  price: number;
+  sizeSqft: number;
+  psf: number;
+  bedrooms: number;
+  bathrooms: number;
+  tenure: string;
+  topYear: number;
+  mrtStation: string;
+  mrtWalkMins: number;
+  ipsDriveMins: number;
+  sourceUrl: string;
+  sourceSite: string;
+  agentName: string;
+  agentPhone: string;
+  status: "new" | "shortlisted" | "viewing_booked" | "viewed" | "negotiating" | "dropped";
+  notes: string;
 }
+```
 
----
+### Agent
 
-# Phase 5 — Firecrawl Integration
+```ts
+export interface Agent {
+  id: string;
+  agentId: string;
+  agentName: string;
+  phone: string;
+  agency: string;
+  notes: string;
+  contacted: boolean;
+  listingCount: number;
+}
+```
 
-File: lib/firecrawl.ts
+### User Decision State
+
+The live backend should persist and return the durable part of the current mock state:
+
+```ts
+type ContactStatus = "pending" | "contacted" | "scheduled";
+
+interface UserListingState {
+  shortlistedIds: string[];
+  dismissedIds: string[];
+  contactStatusByAgentId: Record<string, ContactStatus>;
+}
+```
+
+These current mock-state fields should stay client-only:
+
+- `activeListingFilters`
+- `activeShortlistFilter`
+- `copiedValue`
+- `lastVisitedRoute`
+- `uiFlags`
+
+## Online Retrieval Layer
+
+Keep the Netlify API close to the current frontend contract so we can replace mock data without rewriting selectors.
+
+### 1. App bootstrap
+
+`GET /.netlify/functions/getAppState`
+
+Response:
+
+```json
+{
+  "listings": [],
+  "agents": [],
+  "userState": {
+    "shortlistedIds": [],
+    "dismissedIds": [],
+    "contactStatusByAgentId": {}
+  }
+}
+```
+
+This is the best first live-mode contract because listings, shortlist, contacts, and dashboard all derive from these primitives already.
+
+### 2. Listing detail
+
+`GET /.netlify/functions/getListing?id={listingId}`
+
+Returns one normalized listing object matching `types/models.ts`.
+
+### 3. Manual import trigger
+
+`POST /.netlify/functions/importListing`
 
 Purpose:
 
-scrape listing page  
-extract fields  
-return structured JSON
+- manually ingest a single listing URL on demand
+- reuse the same normalization and upsert services as the ETL layer
+- not replace the scheduled Windmill pipeline
 
-Fields to extract:
+Request:
 
-price
-size
-bedrooms
-address
-project
-agent
-phone
-
----
-
-# Phase 6 — Normalizer
-
-File: lib/normalizer.ts
-
-Purpose:
-
-Convert Firecrawl output → Airtable format
-
-Tasks:
-
-normalize price  
-normalize sqft  
-normalize phone number  
-clean agent name  
-map district
-
-Phone normalization format:
-
-+65XXXXXXXX
-
----
-
-# Phase 7 — Airtable Client
-
-File: lib/airtable.ts
-
-Functions:
-
-createListing()
-getListings()
-createAgentIfMissing()
-
----
-
-# Phase 8 — Import Endpoint
-
-Netlify Function:
-
-netlify/functions/importListing.ts
-
-Flow:
-
-POST /api/import-listing
-
-1 receive URL  
-2 call Firecrawl  
-3 normalize fields  
-4 upsert Airtable listing  
-5 upsert agent  
-6 return listing JSON
-
-Example request:
-
-POST /api/import-listing
+```json
 {
   "url": "https://property-site-listing"
 }
+```
 
----
+Response:
 
-# Phase 9 — Contact Hub
+```json
+{
+  "ok": true,
+  "listing": {},
+  "agent": {},
+  "created": true,
+  "updated": false
+}
+```
 
-Route: /contacts
+### 4. Update shortlist or dismiss state
+
+`PATCH /.netlify/functions/updateListingState`
+
+Request:
+
+```json
+{
+  "listingId": "1",
+  "shortlisted": true,
+  "dismissed": false
+}
+```
+
+### 5. Update contact status
+
+`PATCH /.netlify/functions/updateContactStatus`
+
+Request:
+
+```json
+{
+  "agentId": "1",
+  "status": "scheduled"
+}
+```
+
+## Why This Fits The Existing UI
+
+- listings, shortlist, contacts, and dashboard are all derived from the same small set of primitives
+- the current selectors already expect `listings`, `agents`, and user decision state
+- a bootstrap payload lets us replace `sample-data.ts` and part of `mock-ui-state.ts` incrementally
+- we avoid building separate dashboard endpoints too early
+
+## Airtable Persistence Model
+
+If Airtable remains the MVP database, split config, run tracking, canonical business records, and user decision records.
+
+### Config tables
+
+#### ScrapeSources
+
+- `id`
+- `source_site`
+- `source_type`
+- `entry_url`
+- `enabled`
+- `refresh_priority`
+- `notes`
+
+### Run tracking tables
+
+#### ScrapeRuns
+
+- `id`
+- `run_id`
+- `job_type`
+- `started_at`
+- `finished_at`
+- `status`
+- `source_count`
+- `success_count`
+- `error_count`
+- `notes`
+
+#### RawListingSnapshots
+
+- `id`
+- `run_id`
+- `source_site`
+- `source_url`
+- `raw_payload_json`
+- `normalized_fingerprint`
+- `scraped_at`
+
+#### ScrapeErrors
+
+- `id`
+- `run_id`
+- `source_url`
+- `stage`
+- `error_code`
+- `error_message`
+- `retryable`
+- `created_at`
+
+### Canonical tables
+
+#### Listings
+
+- `id`
+- `listing_id`
+- `project_name`
+- `address`
+- `district`
+- `price`
+- `size_sqft`
+- `psf`
+- `bedrooms`
+- `bathrooms`
+- `tenure`
+- `top_year`
+- `mrt_station`
+- `mrt_walk_mins`
+- `ips_drive_mins`
+- `source_url`
+- `source_site`
+- `agent_id`
+- `status`
+- `notes`
+- `raw_import_hash`
+- `last_imported_at`
+- `last_seen_at`
+- `is_active`
+
+#### Agents
+
+- `id`
+- `agent_id`
+- `agent_name`
+- `phone`
+- `agency`
+- `notes`
+
+#### ListingEvents
+
+- `id`
+- `listing_id`
+- `run_id`
+- `event_type`
+- `old_value_json`
+- `new_value_json`
+- `created_at`
+
+### User decision tables
+
+#### UserListingState
+
+- `id`
+- `user_id`
+- `listing_id`
+- `is_shortlisted`
+- `is_dismissed`
+- `updated_at`
+
+#### UserAgentState
+
+- `id`
+- `user_id`
+- `agent_id`
+- `contact_status`
+- `updated_at`
+
+Important:
+
+Do not treat `Listing.status` as the same thing as shortlist or dismiss state.
+
+`Listing.status` is listing workflow state such as:
+
+- `new`
+- `viewing_booked`
+- `viewed`
+- `negotiating`
+- `dropped`
+
+Shortlist and dismiss are user-specific decisions and should be stored separately.
+
+## Offline ETL Pipeline
+
+The scheduled scrape pipeline is independent from the Netlify retrieval layer.
+
+Netlify reads normalized data.
+Windmill creates and refreshes normalized data.
+
+### Job families
+
+#### 1. Discovery job
 
 Purpose:
 
-Single page showing all agents
+- scan very narrow PropertyGuru search pages or curated search URLs
+- discover new candidate listing URLs
+- reject obviously out-of-criteria candidates as early as possible
+- enqueue only viable new listings for detail scrape
 
-Layout:
+#### 2. Refresh job
 
-Agent name  
-Phone  
-Listings represented  
+Purpose:
 
-Actions:
+- re-scrape active listings already in Airtable
+- detect price, status, agent, or content changes
+- update canonical records
 
-WhatsApp  
-Call  
-Copy
+Refresh priority:
 
-WhatsApp link format:
+- shortlisted listings: highest priority
+- active listings that strongly match criteria: medium priority
+- edge-case listings that only partially match preferences: low priority
+- inactive or stale listings: do not refresh unless manually requested
 
-https://wa.me/{phone}
+#### 3. Reconcile or stale-marking job
 
-Example:
+Purpose:
 
-Agent: John Tan  
-Phone: +6591234567  
+- mark listings inactive if not seen for a configured window
+- avoid showing dead inventory forever
 
-[WhatsApp] [Call] [Copy]
+#### 4. Reporting job
 
----
+Purpose:
 
-# Phase 10 — Listings Page
+- summarize runs, failures, and major listing changes
+- notify operators or write summary records
 
-Route: /listings
+### Pipeline stages
 
-Columns:
+1. Scheduler triggers a run and creates a `run_id`.
+2. Source loader reads `ScrapeSources` or active listings to process.
+3. Criteria gate loads the current hard filters and refresh-priority rules.
+4. Firecrawl stage performs narrow discovery or detailed scrape.
+5. Early rejection gate drops listings that clearly fail the hard criteria before expensive follow-up work.
+6. Raw capture stage stores the raw payload and metadata.
+7. Normalization stage converts the payload into frontend-ready fields.
+8. Match scoring stage classifies the listing as hard-match, soft-match, or reject.
+9. Dedup stage resolves canonical listing identity.
+10. Agent resolution stage matches or creates the agent.
+11. Diff stage compares new data against the canonical listing.
+12. Promotion stage upserts `Listings` and `Agents`.
+13. Post-processing stage writes `ListingEvents`, updates `last_seen_at`, and marks stale records.
+14. Reporting stage updates `ScrapeRuns` and `ScrapeErrors`.
 
-Project  
-Price  
-Size  
-PSF  
-Bedrooms  
-District  
-Agent  
-Status
+### Hard rules
 
-Row actions:
+- the ETL pipeline must never overwrite user shortlist, dismiss, or contact-status state
+- the app must never depend on live Firecrawl calls during page loads
+- the ETL pipeline must optimize for minimal Firecrawl credit usage over maximum catalog coverage
+- the ETL pipeline must stay within PropertyGuru-only search scope for MVP
+- raw scrape output should be stored before aggressive normalization when feasible
+- all listing writes should be idempotent by canonical identity
+- failed hard criteria should stop further processing for that listing unless it is explicitly user-shortlisted
+- unchanged listings should not generate unnecessary Airtable writes
 
-View  
-WhatsApp  
-Call
+## Firecrawl Extraction Contract
 
----
+The current placeholder extractor is too small for the real UI. The scraper should extract enough data to populate both listing cards and the property detail page.
 
-# Phase 11 — Property Detail
+Minimum extracted fields:
 
-Route: /property/[id]
+- project name
+- address
+- district when available
+- price
+- size sqft
+- psf when available
+- bedrooms
+- bathrooms when available
+- tenure when available
+- top year when available
+- mrt station when available
+- mrt walk mins when available
+- agent name
+- agent phone
+- source url
+- source site
+- notes or summary copy when available
 
-Sections:
+If Firecrawl cannot provide some fields, the normalizer should still return a complete listing object with safe defaults and predictable fallback behavior.
 
-Property details  
-Pricing  
-Transport  
-Agent contact card  
-Notes
+## Normalization Rules
 
-Agent card:
+The normalizer should produce frontend-ready values, not scraper-native strings.
 
-Name  
-Phone  
+### Required normalization
 
-[WhatsApp]  
-[Call]  
-[Copy]
+- phone to `+65XXXXXXXX` where possible
+- currency to integer SGD
+- numeric strings to numbers
+- `sizeSqft` as integer
+- `psf` as integer
+- `bedrooms` and `bathrooms` as integers
+- `topYear` as integer
+- `mrtWalkMins` and `ipsDriveMins` as integers
 
----
+### Derived values
 
-# Phase 12 — Dashboard
+- compute `psf` from `price / sizeSqft` if missing and both exist
+- infer `sourceSite` from hostname when not extracted
+- generate stable `listingId` if source-site id is missing
+- attach `agentId` by deduping on normalized phone first, then normalized name
 
-Route: /dashboard
+### Safe defaults
 
-Widgets:
+- unknown text fields: `""`
+- unknown numeric fields: `0`
+- default listing status: `"new"`
 
-total properties  
-shortlisted  
-viewed  
-average psf
+## Recommended Windmill Setup
 
-Charts:
+### Workspace configuration
 
-price vs size  
-score ranking  
-district distribution
+Create resources and secrets for:
 
----
+- Firecrawl API access
+- Airtable API access
+- optional notification endpoints
 
-# Phase 13 — Deployment
+### Scripts
 
-Netlify config: netlify.toml
+Start with small scripts that do one thing each:
 
-Example:
+- `load_scrape_sources`
+- `discover_listing_urls`
+- `scrape_listing_detail`
+- `normalize_listing_payload`
+- `upsert_agent`
+- `upsert_listing`
+- `record_listing_event`
+- `record_scrape_error`
+- `mark_stale_listings`
+- `summarize_scrape_run`
 
-[build]
-command = "npm run build"
-publish = ".next"
+### Flows
 
-[functions]
-directory = "netlify/functions"
+Create a few opinionated flows instead of one giant workflow:
 
----
+- `daily_discovery_flow`
+- `daily_refresh_flow`
+- `stale_reconciliation_flow`
+- `scrape_reporting_flow`
 
-# Phase 14 — End-to-End Test
+### Scheduling
 
-paste property URL  
-↓  
-Firecrawl scrape  
-↓  
-listing added to Airtable  
-↓  
-listing appears in app  
-↓  
-agent appears in Contact Hub  
-↓  
-WhatsApp opens correctly
+Recommended starting point:
 
----
+- discovery once daily using only narrow pre-filtered entry URLs
+- shortlisted listing refresh once daily
+- active matched listing refresh every 2 to 3 days
+- low-priority listing refresh weekly
+- stale reconciliation nightly
+- reporting after the main scrape window
 
-# Phase 15 — Optional Enhancements
+### Reliability
 
-property scoring  
-URA transformation signals  
-PSF comparisons  
-listing deduplication  
-auto MRT distance calculation
+Use Windmill flow retries and error handlers for transient failures.
 
----
+Typical retry candidates:
 
-# MVP Definition
+- Firecrawl request failures
+- Airtable rate-limit or temporary API failures
+- intermittent parsing or network issues
 
-MVP complete when:
+Use run-level logging so each ETL run can be audited by `run_id`.
 
-import listing works  
-listings table loads  
-contact hub works  
-whatsapp links open correctly
+## Implementation Order
 
----
+### Phase 1: Lock the backend contract
 
-# Codex Execution Mode
+- keep `types/models.ts` as the canonical frontend-facing schema
+- keep the online and offline layers separate by design
+- treat this playbook as the source of truth for the split
 
-Execute phases sequentially.  
-Commit after each phase.  
-Pause for review after Phase 5.
+### Phase 2: Build the ETL core first
+
+- expand `lib/normalizer.ts` to cover all UI-required fields
+- add robust unit tests for Singapore phone and currency parsing
+- implement Airtable repositories for canonical tables and run tracking
+- define the first Windmill scripts and flows
+
+### Phase 3: Land the scheduled pipeline
+
+- implement discovery flow
+- implement refresh flow
+- implement snapshot and error recording
+- implement stale listing handling
+- verify Airtable is populated without involving the app
+
+### Phase 4: Build the Netlify retrieval layer
+
+- add `getAppState`
+- add `getListing`
+- keep manual `importListing` as an operator tool, not the primary ingestion path
+- add shortlist and contact-status mutation endpoints
+
+### Phase 5: Add the frontend live-mode adapter
+
+- replace direct `sample-data.ts` reads with fetched live data when `NEXT_PUBLIC_DATA_MODE === "live"`
+- preserve the current selectors where possible
+- keep transient UI flags local
+
+## Acceptance Criteria
+
+Backend is ready for frontend integration when all of the following are true:
+
+1. Scheduled Windmill runs populate and refresh Airtable canonical tables.
+2. Run snapshots, errors, and changes are inspectable after each ETL run.
+3. `getAppState` returns data that can drive listings, shortlist, contacts, and dashboard without page-specific reshaping.
+4. Property detail can load by listing id using the same fields already rendered today.
+5. Shortlist, dismiss, and contact status updates persist across reloads.
+6. WhatsApp and call links still work because the backend returns normalized phone numbers.
+7. The frontend does not need a second domain model for live mode.
+
+## Non-Goals For This Phase
+
+- redesigning the frontend
+- changing route structure
+- making live Firecrawl requests from page loads
+- inventing a separate analytics service
+- persisting temporary UI flags
+- over-optimizing beyond the current MVP screen set
+
+## Files To Review First
+
+- `types/models.ts`
+- `lib/sample-data.ts`
+- `lib/mock-ui-state.ts`
+- `lib/mock-selectors.ts`
+- `lib/airtable.ts`
+- `lib/firecrawl.ts`
+- `lib/normalizer.ts`
+- `netlify/functions/importListing.ts`
+- `netlify/functions/getListings.ts`
+
+## Future Folder Direction
+
+As the ETL layer grows, prefer a structure like:
+
+- `windmill/scripts/`
+- `windmill/flows/`
+- `lib/services/`
+- `lib/repositories/`
+- `lib/normalizer/`
+
+## Final Direction
+
+The fastest path is:
+
+1. keep the current frontend contract
+2. let Windmill own scheduled scraping and post-processing
+3. let Airtable store canonical data, run history, and user state
+4. let Netlify serve curated data to the UI
+5. leave ephemeral UI behavior in the client
+
+That gives us a backend that genuinely fits the existing UI instead of forcing the UI to be rebuilt around the backend.
+
