@@ -34,6 +34,7 @@ This means the MVP browser worker should:
 - navigate PropertyGuru on demand
 - extract a bounded number of matching listings
 - write normalized results and run status back to Airtable
+- reuse one browser process per run instead of fanning out one-off probe sessions
 
 Windmill and Firecrawl are still useful later for public-page discovery or post-processing, but they are not the critical path for the current MVP.
 
@@ -80,6 +81,7 @@ Responsibilities:
 - navigate PropertyGuru search or listing pages
 - extract normalized listing cards and detail fields
 - persist extracted records, run logs, and failures back to Airtable
+- skip already-known `source_url` values before opening detail pages
 - stop after explicit limits like `10` or `50` matches
 
 ### Deferred offline ETL layer
@@ -155,9 +157,9 @@ The worker should interpret `extract_matches` deterministically:
 
 Do not rely on a generic autonomous browser agent for MVP. Use a bounded action set and a small number of supported job contracts.
 
-## Search Criteria For Low-Credit ETL
+## Search Criteria And On-Site Filters
 
-The initial MVP ETL should use strict, criteria-first filtering.
+The current MVP should use strict, criteria-first filtering, but it should push as much narrowing as possible into PropertyGuru's own search URLs before any detail-page traversal.
 
 ### Source restrictions
 
@@ -175,7 +177,7 @@ The initial MVP ETL should use strict, criteria-first filtering.
 
 ### Location
 
-Primary districts:
+Primary district preferences:
 
 - District 5
 - District 10
@@ -199,7 +201,7 @@ Representative focus areas:
 
 ### Additional preference filters
 
-- tenure: `Freehold` or `99-year`
+- tenure: `Freehold` or any leasehold `>= 99 years`
 - completion status: `Completed`
 - floor level: `Mid` or `High`
 - furnishing: `Partially Furnished` or `Unfurnished`
@@ -211,24 +213,47 @@ Representative focus areas:
 - `Newest Listings`
 - `Price per sqft`
 
-### ETL operating interpretation
+### Browser-worker operating interpretation
 
 These criteria should be used in two passes:
 
 - search-page narrowing: use them to build or maintain very narrow PropertyGuru search entry URLs
 - detail-page acceptance: only keep or refresh listings that still match the hard filters or are already shortlisted by the user
 
-For MVP credit control, treat these as hard filters unless explicitly overridden:
+Default search-page URL shape for MVP:
+
+- `with-2-bedrooms`
+- `maxPrice=1500000`
+- `minSize=900`
+
+Do not spend time on `3BR` or `4BR` branches under the same price cap. Under the current budget, those searches have materially lower expected yield than `2BR`.
+
+For MVP control, treat these as hard filters unless explicitly overridden:
 
 - source site must be `propertyguru.com.sg`
 - price must be `<= S$1,500,000`
 - bedrooms must be `>= 2`
 - size must be `>= 900 sqft`
-- district should be one of `D5`, `D10`, or `D21`
-- MRT proximity should be `<= 500 m` or `<= 5 min walk` when available
-- IPS drive time should be `< 15 minutes` when available
+- the search URL should already encode bedrooms, price, and size when possible
 
-The remaining fields should be treated as preference boosts, not automatic rejection, unless the search-entry URL can filter them cheaply upstream.
+Treat these as preference or review fields, not automatic rejection:
+
+- district, because it is an optional narrowing axis rather than a core economic filter
+- MRT proximity when it is missing from the search card
+- IPS drive time when it is not cheaply derivable
+- tenure, as long as it is `freehold` or a leasehold term of at least `99 years`
+
+The worker should trust PropertyGuru's own URL filters for price, bedroom count, and minimum size when the search card is incomplete, then confirm the stored values on the detail page.
+
+## Current Operational Learnings
+
+The live runs changed the operating rules in a few important ways:
+
+- Candidate URL discovery must happen in one process, not one exec session per URL probe.
+- Helper scripts must exit explicitly after output so the CDP connection does not leave orphaned terminals behind.
+- Known `source_url` values must be loaded before a run so we skip already-stored listings before opening detail pages.
+- Exact filtered pools in `D5`, `D10`, `D21`, and adjacent MRT pages can saturate quickly. When incremental yield drops to near zero, widen to the next plausible geography instead of repeatedly rerunning the same pool.
+- Data quality fixes such as address parsing and agent-name extraction can recover valid rows more cheaply than widening the crawl blindly.
 
 ## Frontend Surfaces The Backend Must Support
 
@@ -620,9 +645,9 @@ Do not treat `Listing.status` as the same thing as shortlist or dismiss state.
 
 Shortlist and dismiss are user-specific decisions and should be stored separately.
 
-## Offline ETL Pipeline
+## Deferred Offline ETL Pipeline
 
-The scheduled scrape pipeline is independent from the Netlify retrieval layer.
+The scheduled scrape pipeline is still independent from the Netlify retrieval layer, but it is deferred behind the authenticated browser-worker path.
 
 Netlify reads normalized data.
 Windmill creates and refreshes normalized data.
@@ -672,7 +697,7 @@ Purpose:
 1. Scheduler triggers a run and creates a `run_id`.
 2. Source loader reads `ScrapeSources` or active listings to process.
 3. Criteria gate loads the current hard filters and refresh-priority rules.
-4. Firecrawl stage performs narrow discovery or detailed scrape.
+4. Public extraction stage performs narrow discovery or detailed scrape.
 5. Early rejection gate drops listings that clearly fail the hard criteria before expensive follow-up work.
 6. Raw capture stage stores the raw payload and metadata.
 7. Normalization stage converts the payload into frontend-ready fields.
@@ -694,10 +719,11 @@ Purpose:
 - all listing writes should be idempotent by canonical identity
 - failed hard criteria should stop further processing for that listing unless it is explicitly user-shortlisted
 - unchanged listings should not generate unnecessary Airtable writes
+- do not branch into economically implausible search pools, such as larger bedroom counts under the same tight price ceiling, unless the user explicitly asks for that expansion
 
-## Firecrawl Extraction Contract
+## Authenticated Extraction Contract
 
-The current placeholder extractor is too small for the real UI. The scraper should extract enough data to populate both listing cards and the property detail page.
+The current local Playwright extractor should populate both listing cards and the property detail page. Firecrawl remains a later public-page tool, not the core authenticated extraction path.
 
 Minimum extracted fields:
 
@@ -714,12 +740,12 @@ Minimum extracted fields:
 - mrt station when available
 - mrt walk mins when available
 - agent name
-- agent phone
+- agent phone when the logged-in page exposes it
 - source url
 - source site
 - notes or summary copy when available
 
-If Firecrawl cannot provide some fields, the normalizer should still return a complete listing object with safe defaults and predictable fallback behavior.
+If the authenticated browser cannot provide some fields, the normalizer should still return a complete listing object with safe defaults and predictable fallback behavior. If Firecrawl is reintroduced later for public discovery, it should match the same normalized output contract.
 
 ## Normalization Rules
 
