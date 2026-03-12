@@ -1,0 +1,16 @@
+{
+  "name": "Playwright Environment",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/workspaces/condo-hunt",
+  "remoteUser": "root",
+  "containerUser": "root",
+  "runArgs": ["--ipc=host"],
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-playwright.playwright"]
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
+}
