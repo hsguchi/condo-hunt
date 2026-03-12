@@ -6,6 +6,13 @@
   "workspaceFolder": "/workspaces/condo-hunt",
   "remoteUser": "root",
   "containerUser": "root",
+  "mounts": [
+    "source=${localEnv:HOME}/.config,target=/root/.config,type=bind,readonly",
+    "source=${localEnv:HOME}/.local/share/opencode,target=/tmp/opencode-host,type=bind,readonly",
+    "source=${localEnv:HOME}/.gsd,target=/tmp/gsd-host,type=bind,readonly",
+    "source=condo-hunt-opencode-state,target=/root/.local/share/opencode,type=volume",
+    "source=condo-hunt-gsd-sessions,target=/root/.gsd/sessions,type=volume"
+  ],
   "runArgs": ["--ipc=host"],
   "customizations": {
     "vscode": {
